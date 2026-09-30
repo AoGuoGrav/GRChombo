@@ -17,8 +17,8 @@ checkpoint_interval = 20
 # set to 0 to turn off plot files (except at t=0 and t=stop_time)
 # set to -1 to never ever print plotfiles
 plot_interval = 5
-num_plot_vars = 2
-plot_vars = chi Ham
+num_plot_vars = 3
+plot_vars = chi Ham lapse
 
 # subpaths - specific directories for hdf5, pout, extraction data
 # (these are created at runtime)
