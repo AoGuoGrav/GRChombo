@@ -10,7 +10,19 @@
 
 //! The potential V(phi1, phi2) of the two scalar fields
 /*!
-    V = 1/2 mu1^2 phi1^2 + 1/2 mu2^2 phi2^2 + 1/2 lambda phi1^2 phi2^2
+    The interaction is the cubic coupling L_int = lambda psi^2 phi of
+    Zhu, Piao & Zhang, arXiv:2509.10892, where psi is the field that appears
+    squared. With interaction_squared_field = 1 (psi = phi1, phi = phi2)
+
+      V = 1/2 mu1^2 phi1^2 + 1/2 mu2^2 phi2^2 - lambda phi1^2 phi2
+
+    and with interaction_squared_field = 2 (psi = phi2, phi = phi1)
+
+      V = 1/2 mu1^2 phi1^2 + 1/2 mu2^2 phi2^2 - lambda phi1 phi2^2
+
+    so that, e.g. for the first case, Box phi1 - mu1^2 phi1 = -2 lambda phi1
+    phi2 and Box phi2 - mu2^2 phi2 = -lambda phi1^2 as in their Eqs. (13-14).
+    Note that a cubic potential is unbounded below for any lambda != 0.
 
     To use a different potential, edit compute_potential below (and params_t
     if new parameters are needed, reading them in SimulationParameters.hpp).
@@ -21,9 +33,10 @@ class Potential
   public:
     struct params_t
     {
-        double scalar_mass1; //!< mu1, the mass of phi1
-        double scalar_mass2; //!< mu2, the mass of phi2
-        double lambda;       //!< the coupling constant of the interaction
+        double scalar_mass1;           //!< mu1, the mass of phi1
+        double scalar_mass2;           //!< mu2, the mass of phi2
+        double lambda;                 //!< the cubic coupling constant
+        int interaction_squared_field; //!< which field is squared (1 or 2)
     };
 
   private:
@@ -40,16 +53,26 @@ class Potential
     {
         const double mu1_sq = m_params.scalar_mass1 * m_params.scalar_mass1;
         const double mu2_sq = m_params.scalar_mass2 * m_params.scalar_mass2;
-        const data_t phi1_sq = vars.phi1 * vars.phi1;
-        const data_t phi2_sq = vars.phi2 * vars.phi2;
 
-        // The potential value at (phi1, phi2)
-        V_of_phi = 0.5 * mu1_sq * phi1_sq + 0.5 * mu2_sq * phi2_sq +
-                   0.5 * m_params.lambda * phi1_sq * phi2_sq;
+        // The free (mass) part
+        V_of_phi = 0.5 * mu1_sq * vars.phi1 * vars.phi1 +
+                   0.5 * mu2_sq * vars.phi2 * vars.phi2;
+        dVdphi1 = mu1_sq * vars.phi1;
+        dVdphi2 = mu2_sq * vars.phi2;
 
-        // The potential gradients
-        dVdphi1 = mu1_sq * vars.phi1 + m_params.lambda * vars.phi1 * phi2_sq;
-        dVdphi2 = mu2_sq * vars.phi2 + m_params.lambda * phi1_sq * vars.phi2;
+        // The cubic interaction V_int = -lambda psi^2 phi
+        if (m_params.interaction_squared_field == 1)
+        {
+            V_of_phi += -m_params.lambda * vars.phi1 * vars.phi1 * vars.phi2;
+            dVdphi1 += -2.0 * m_params.lambda * vars.phi1 * vars.phi2;
+            dVdphi2 += -m_params.lambda * vars.phi1 * vars.phi1;
+        }
+        else
+        {
+            V_of_phi += -m_params.lambda * vars.phi1 * vars.phi2 * vars.phi2;
+            dVdphi1 += -m_params.lambda * vars.phi2 * vars.phi2;
+            dVdphi2 += -2.0 * m_params.lambda * vars.phi1 * vars.phi2;
+        }
     }
 };
 

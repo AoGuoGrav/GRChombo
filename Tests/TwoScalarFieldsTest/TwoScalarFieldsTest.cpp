@@ -10,8 +10,10 @@
 //  (b) the matter contribution to the metric RHS (MatterCCZ4RHS minus the
 //      vacuum CCZ4RHS) and to the constraints (MatterConstraints minus
 //      Constraints) equals the sum of the two single field contributions
-//  (c) with lambda != 0 the change in rhs.Pi1 (rhs.Pi2) is
-//      -lapse * lambda * phi1 * phi2^2 (-lapse * lambda * phi1^2 * phi2)
+//  (c) with the cubic coupling V_int = -lambda psi^2 phi of the
+//      TwoFieldsBinaryBH example (psi = phi1 or phi2) the changes in rhs.Pi1,
+//      rhs.Pi2 and Ham are -lapse dV_int/dphi1, -lapse dV_int/dphi2 and
+//      -16 pi G V_int
 
 // Chombo includes
 #include "FArrayBox.H"
@@ -25,8 +27,10 @@
 #include "CCZ4RHS.hpp"
 #include "MatterCCZ4RHS.hpp"
 #include "NewMatterConstraints.hpp"
-#include "Potential.hpp"
+// the two field potential tested is the one of the TwoFieldsBinaryBH example
+#include "../../Examples/TwoFieldsBinaryBH/Potential.hpp"
 #include "ScalarField.hpp"
+#include "SingleFieldPotential.hpp"
 #include "TwoScalarFields.hpp"
 #include "UserVariables.hpp"
 #include <iomanip>
@@ -281,14 +285,11 @@ int main()
     const double sigma = 0.1;
 
     typedef ScalarField<SingleFieldPotential> SingleField;
-    typedef TwoScalarFields<TwoFieldPotential> TwoFields;
+    typedef TwoScalarFields<Potential> TwoFields;
 
     SingleField field1(SingleFieldPotential{scalar_mass1});
     SingleField field2(SingleFieldPotential{scalar_mass2});
-    TwoFields two_fields_free(
-        TwoFieldPotential({scalar_mass1, scalar_mass2, 0.}));
-    TwoFields two_fields_coupled(
-        TwoFieldPotential({scalar_mass1, scalar_mass2, lambda}));
+    TwoFields two_fields_free(Potential({scalar_mass1, scalar_mass2, 0., 1}));
 
     bool passed = true;
 
@@ -307,12 +308,10 @@ int main()
         }
 
         FArrayBox out_two(box, NUM_VARS);
-        FArrayBox out_two_coupled(box, NUM_VARS);
         FArrayBox out_one1(box, NUM_VARS);
         FArrayBox out_one2(box, NUM_VARS);
         FArrayBox out_vac(box, NUM_VARS);
-        for (FArrayBox *fab :
-             {&out_two, &out_two_coupled, &out_one1, &out_one2, &out_vac})
+        for (FArrayBox *fab : {&out_two, &out_one1, &out_one2, &out_vac})
             fab->setVal(0.);
 
         // RHS
@@ -321,11 +320,6 @@ int main()
                           FourthOrderDerivatives>(two_fields_free, params, dx,
                                                   sigma, formulation, G_Newton),
             in_fab, out_two);
-        BoxLoops::loop(
-            MatterCCZ4RHS<TwoFields, MovingPunctureGauge,
-                          FourthOrderDerivatives>(
-                two_fields_coupled, params, dx, sigma, formulation, G_Newton),
-            in_fab, out_two_coupled);
         BoxLoops::loop(MatterCCZ4RHS<SingleField, MovingPunctureGauge,
                                      FourthOrderDerivatives>(
                            field1, params, dx, sigma, formulation, G_Newton),
@@ -400,37 +394,78 @@ int main()
                   << (passed_b ? "passed" : "FAILED") << " (max relative error "
                   << max_rel_err << ")" << std::endl;
 
-        // (c) interaction terms in the Pi RHS
+        // (c) cubic interaction terms in the Pi RHS and in Ham, for both
+        // choices of the squared field
         bool passed_c = true;
         max_rel_err = 0.;
-        double err_Pi1 = 0., err_Pi2 = 0., scale_Pi1 = 0., scale_Pi2 = 0.;
-        for (BoxIterator bit(box); bit.ok(); ++bit)
+        for (int squared_field : {1, 2})
         {
-            const IntVect iv = bit();
-            const double lapse = in_fab(iv, c_lapse);
-            const double phi1 = in_fab(iv, c_phi1);
-            const double phi2 = in_fab(iv, c_phi2);
-            const double expected_dPi1 = -lapse * lambda * phi1 * phi2 * phi2;
-            const double expected_dPi2 = -lapse * lambda * phi1 * phi1 * phi2;
-            const double dPi1 = out_two_coupled(iv, c_Pi1) - out_two(iv, c_Pi1);
-            const double dPi2 = out_two_coupled(iv, c_Pi2) - out_two(iv, c_Pi2);
-            err_Pi1 = std::max(err_Pi1, std::abs(dPi1 - expected_dPi1));
-            err_Pi2 = std::max(err_Pi2, std::abs(dPi2 - expected_dPi2));
-            scale_Pi1 = std::max(scale_Pi1, std::abs(out_two(iv, c_Pi1)));
-            scale_Pi2 = std::max(scale_Pi2, std::abs(out_two(iv, c_Pi2)));
+            TwoFields two_fields_coupled(
+                Potential({scalar_mass1, scalar_mass2, lambda, squared_field}));
+            FArrayBox out_two_coupled(box, NUM_VARS);
+            out_two_coupled.setVal(0.);
+            BoxLoops::loop(MatterCCZ4RHS<TwoFields, MovingPunctureGauge,
+                                         FourthOrderDerivatives>(
+                               two_fields_coupled, params, dx, sigma,
+                               formulation, G_Newton),
+                           in_fab, out_two_coupled);
+            BoxLoops::loop(
+                MatterConstraints<TwoFields>(two_fields_coupled, dx, G_Newton,
+                                             c_Ham, Interval(c_Mom1, c_Mom3)),
+                in_fab, out_two_coupled);
+
+            double err_Pi1 = 0., err_Pi2 = 0., err_Ham = 0.;
+            double scale_Pi1 = 0., scale_Pi2 = 0., scale_Ham = 0.;
+            for (BoxIterator bit(box); bit.ok(); ++bit)
+            {
+                const IntVect iv = bit();
+                const double lapse = in_fab(iv, c_lapse);
+                const double phi1 = in_fab(iv, c_phi1);
+                const double phi2 = in_fab(iv, c_phi2);
+                // psi is the squared field, phi the other one
+                const double psi = (squared_field == 1) ? phi1 : phi2;
+                const double phi = (squared_field == 1) ? phi2 : phi1;
+                const double V_int = -lambda * psi * psi * phi;
+                const double dVint_dpsi = -2.0 * lambda * psi * phi;
+                const double dVint_dphi = -lambda * psi * psi;
+                const double dVint_dphi1 =
+                    (squared_field == 1) ? dVint_dpsi : dVint_dphi;
+                const double dVint_dphi2 =
+                    (squared_field == 1) ? dVint_dphi : dVint_dpsi;
+
+                const double dPi1 =
+                    out_two_coupled(iv, c_Pi1) - out_two(iv, c_Pi1);
+                const double dPi2 =
+                    out_two_coupled(iv, c_Pi2) - out_two(iv, c_Pi2);
+                const double dHam =
+                    out_two_coupled(iv, c_Ham) - out_two(iv, c_Ham);
+                err_Pi1 =
+                    std::max(err_Pi1, std::abs(dPi1 + lapse * dVint_dphi1));
+                err_Pi2 =
+                    std::max(err_Pi2, std::abs(dPi2 + lapse * dVint_dphi2));
+                err_Ham = std::max(
+                    err_Ham, std::abs(dHam + 16. * M_PI * G_Newton * V_int));
+                scale_Pi1 = std::max(scale_Pi1, std::abs(out_two(iv, c_Pi1)));
+                scale_Pi2 = std::max(scale_Pi2, std::abs(out_two(iv, c_Pi2)));
+                scale_Ham = std::max(scale_Ham, std::abs(out_two(iv, c_Ham)));
+            }
+            const std::string label =
+                " (squared field " + std::to_string(squared_field) + ")";
+            passed_c &= check("interaction term in rhs Pi1" + label, err_Pi1,
+                              scale_Pi1);
+            passed_c &= check("interaction term in rhs Pi2" + label, err_Pi2,
+                              scale_Pi2);
+            passed_c &=
+                check("interaction term in Ham" + label, err_Ham, scale_Ham);
+            // the field RHS and Mom must not depend on lambda
+            for (int icomp : {c_phi1, c_phi2, c_Mom1, c_Mom2, c_Mom3})
+                passed_c &= check(
+                    UserVariables::variable_names[icomp] +
+                        " independent of lambda" + label,
+                    max_abs_diff(out_two_coupled, icomp, out_two, icomp, box),
+                    out_two.norm(0, icomp, 1));
         }
-        passed_c &= check("interaction term in rhs Pi1", err_Pi1, scale_Pi1);
-        passed_c &= check("interaction term in rhs Pi2", err_Pi2, scale_Pi2);
-        // the field RHS must not depend on lambda
-        passed_c &=
-            check("rhs phi1 independent of lambda",
-                  max_abs_diff(out_two_coupled, c_phi1, out_two, c_phi1, box),
-                  out_two.norm(0, c_phi1, 1));
-        passed_c &=
-            check("rhs phi2 independent of lambda",
-                  max_abs_diff(out_two_coupled, c_phi2, out_two, c_phi2, box),
-                  out_two.norm(0, c_phi2, 1));
-        std::cout << "  (c) interaction terms "
+        std::cout << "  (c) cubic interaction terms "
                   << (passed_c ? "passed" : "FAILED") << " (max relative error "
                   << max_rel_err << ")" << std::endl;
 

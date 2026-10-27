@@ -22,6 +22,7 @@
 
 // Matter includes
 #include "EMTensor.hpp"
+#include "FieldEnergyDensities.hpp"
 #include "InitialTwoFieldsData.hpp"
 #include "MatterCCZ4RHS.hpp"
 #include "MatterWeyl4.hpp"
@@ -245,6 +246,38 @@ void TwoFieldsBinaryBHLevel::specificPostTimeStep()
         }
     }
 
+    // integrals of the energy densities in a sphere around the binary, every
+    // coarsest level time step (the finer levels have reached the same time
+    // when level 0 calls this, so the reduction sees all levels)
+    if (m_p.calculate_rho_integrals && at_level_timestep_multiple(0))
+    {
+        CH_TIME("RhoIntegrals");
+        fillAllGhosts();
+        BoxLoops::loop(FieldEnergyDensities(
+                           two_fields, m_p.potential_params, m_dx, m_p.center,
+                           m_p.rho_integral_radius, m_p.rho_integral_min_chi),
+                       m_state_new, m_state_diagnostics, EXCLUDE_GHOST_CELLS);
+        if (m_level == 0)
+        {
+            // sum() already multiplies by the symmetry factor of reflective
+            // boundaries, so these are integrals over the full sphere
+            AMRReductions<VariableType::diagnostic> amr_reductions(m_gr_amr);
+            double M1 = amr_reductions.sum(c_rho1_dV);
+            double M2 = amr_reductions.sum(c_rho2_dV);
+            double M_total = amr_reductions.sum(c_rho_dV);
+            SmallDataIO rho_file(m_p.data_path + "rho_integrals", m_dt, m_time,
+                                 m_restart_time, SmallDataIO::APPEND,
+                                 first_step);
+            rho_file.remove_duplicate_time_data();
+            if (first_step)
+            {
+                rho_file.write_header_line(
+                    {"int rho1 dV", "int rho2 dV", "int rho dV (total)"});
+            }
+            rho_file.write_time_data_line({M1, M2, M_total});
+        }
+    }
+
     // do puncture tracking on requested level
     if (m_p.track_punctures && m_level == m_p.puncture_tracking_level)
     {
@@ -282,19 +315,22 @@ void TwoFieldsBinaryBHLevel::prePlotLevel()
     MatterConstraints<TwoFieldsWithPotential> constraints(
         two_fields, m_dx, m_p.G_Newton, c_Ham, Interval(c_Mom1, c_Mom3));
     EMTensor<TwoFieldsWithPotential> emtensor(two_fields, m_dx, c_rho);
+    FieldEnergyDensities field_energies(two_fields, m_p.potential_params, m_dx,
+                                        m_p.center, m_p.rho_integral_radius,
+                                        m_p.rho_integral_min_chi);
     if (m_p.activate_extraction == 1)
     {
         BoxLoops::loop(
             make_compute_pack(MatterWeyl4<TwoFieldsWithPotential>(
                                   two_fields, m_p.extraction_params.center,
                                   m_dx, m_p.formulation, m_p.G_Newton),
-                              constraints, emtensor),
+                              constraints, emtensor, field_energies),
             m_state_new, m_state_diagnostics, EXCLUDE_GHOST_CELLS);
     }
     else
     {
-        BoxLoops::loop(make_compute_pack(constraints, emtensor), m_state_new,
-                       m_state_diagnostics, EXCLUDE_GHOST_CELLS);
+        BoxLoops::loop(make_compute_pack(constraints, emtensor, field_energies),
+                       m_state_new, m_state_diagnostics, EXCLUDE_GHOST_CELLS);
     }
 }
 #endif /* CH_USE_HDF5 */

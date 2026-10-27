@@ -59,20 +59,32 @@ momentumB =  0.0841746  0.000510846 0.0
 
 G_Newton = 1.0
 
-# Potential V = 1/2 mu1^2 phi1^2 + 1/2 mu2^2 phi2^2 + 1/2 lambda phi1^2 phi2^2
+# Potential V = 1/2 mu1^2 phi1^2 + 1/2 mu2^2 phi2^2 + V_int with the cubic
+# coupling of arXiv:2509.10892 (L_int = lambda psi^2 phi):
+#   interaction_squared_field = 1: V_int = -lambda phi1^2 phi2  (psi = phi1)
+#   interaction_squared_field = 2: V_int = -lambda phi1 phi2^2  (psi = phi2)
 scalar_mass1 = 0.05
 scalar_mass2 = 0.08
 lambda = 0.1
+interaction_squared_field = 1
 
 # Uniform initial values of the fields and their momenta
 phi1_0 = 1.0e-4
-phi2_0 = 1.0e-4
+phi2_0 = 0.0
 # Pi1_0 = 0.0
 # Pi2_0 = 0.0
 
 # K = K_sign * sqrt(24 pi G rho) is set so that the constraints are satisfied
 # -1 = expanding background (GRChombo convention), +1 = contracting
 # K_sign = -1
+
+# Integrals of rho1, rho2 and the total rho times sqrt(gamma) inside the sphere
+# r < rho_integral_radius around the center, excluding cells with
+# chi < rho_integral_min_chi (inside the horizons), written every coarse step
+# to data/rho_integrals.dat
+calculate_rho_integrals = 1
+rho_integral_radius = 25.0
+# rho_integral_min_chi = 0.2
 
 #################################################
 # Grid parameters
@@ -138,6 +150,8 @@ vars_parity            = 0 0 4 6 0 5 0    #chi and hij
 vars_parity_diagnostic = 0 1 2 3          #Ham and Mom
                          0 7              #Weyl
                          0                #rho
+                         0 0              #rho1 rho2
+                         0 0 0            #rho1_dV rho2_dV rho_dV
 
 # if sommerfeld boundaries selected, must select
 # asymptotic values

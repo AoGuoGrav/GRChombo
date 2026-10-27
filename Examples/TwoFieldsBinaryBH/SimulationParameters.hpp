@@ -39,11 +39,13 @@ class SimulationParameters : public SimulationParametersBase
     {
         pp.load("G_Newton", G_Newton, 1.0);
 
-        // Potential V = 1/2 mu1^2 phi1^2 + 1/2 mu2^2 phi2^2
-        //               + 1/2 lambda phi1^2 phi2^2
+        // Potential V = 1/2 mu1^2 phi1^2 + 1/2 mu2^2 phi2^2 - lambda psi^2 phi
+        // with psi = phi1 (interaction_squared_field = 1) or phi2 (= 2)
         pp.load("scalar_mass1", potential_params.scalar_mass1, 0.1);
         pp.load("scalar_mass2", potential_params.scalar_mass2, 0.1);
         pp.load("lambda", potential_params.lambda, 0.0);
+        pp.load("interaction_squared_field",
+                potential_params.interaction_squared_field, 1);
 
         // Uniform initial values of the fields and their momenta
         pp.load("phi1_0", initial_params.phi1_0, 0.0);
@@ -52,6 +54,12 @@ class SimulationParameters : public SimulationParametersBase
         pp.load("Pi2_0", initial_params.Pi2_0, 0.0);
         // -1 for an expanding background (K < 0), +1 for a contracting one
         pp.load("K_sign", initial_params.K_sign, -1.0);
+
+        // Integrals of the energy densities around the binary, written to
+        // data/rho_integrals.dat every coarse time step
+        pp.load("calculate_rho_integrals", calculate_rho_integrals, false);
+        pp.load("rho_integral_radius", rho_integral_radius, 20.0);
+        pp.load("rho_integral_min_chi", rho_integral_min_chi, 0.2);
 
         Potential potential(potential_params);
         initial_K = InitialTwoFieldsData::compute_K(initial_params, potential,
@@ -338,24 +346,42 @@ class SimulationParameters : public SimulationParametersBase
                         initial_params.K_sign == 1.0 ||
                             initial_params.K_sign == -1.0,
                         "must be +1 or -1");
-        warn_parameter("lambda", potential_params.lambda,
-                       potential_params.lambda >= 0.0,
-                       "the potential is unbounded below for lambda < 0");
-        // effective masses around the initial uniform values
-        double mu1_eff = sqrt(std::max(
-            0.0, pow(potential_params.scalar_mass1, 2) +
-                     potential_params.lambda * pow(initial_params.phi2_0, 2)));
-        double mu2_eff = sqrt(std::max(
-            0.0, pow(potential_params.scalar_mass2, 2) +
-                     potential_params.lambda * pow(initial_params.phi1_0, 2)));
-        warn_parameter("mu1_eff = sqrt(scalar_mass1^2 + lambda * phi2_0^2)",
-                       mu1_eff, mu1_eff < 0.2 / coarsest_dx / dt_multiplier,
+        check_parameter("interaction_squared_field",
+                        potential_params.interaction_squared_field,
+                        potential_params.interaction_squared_field == 1 ||
+                            potential_params.interaction_squared_field == 2,
+                        "must be 1 (V_int = -lambda phi1^2 phi2) or 2 "
+                        "(V_int = -lambda phi1 phi2^2)");
+        // effective masses squared d^2V/dphi_a^2 at the initial uniform
+        // values: only the squared field gets a shift -2 lambda phi_other
+        double mu1_eff_sq = pow(potential_params.scalar_mass1, 2);
+        double mu2_eff_sq = pow(potential_params.scalar_mass2, 2);
+        if (potential_params.interaction_squared_field == 1)
+            mu1_eff_sq -= 2.0 * potential_params.lambda * initial_params.phi2_0;
+        else
+            mu2_eff_sq -= 2.0 * potential_params.lambda * initial_params.phi1_0;
+        warn_parameter("mu1_eff^2", mu1_eff_sq, mu1_eff_sq > 0.0,
+                       "phi1 is tachyonic around the initial values (the cubic "
+                       "potential is unbounded below), reduce lambda");
+        warn_parameter("mu2_eff^2", mu2_eff_sq, mu2_eff_sq > 0.0,
+                       "phi2 is tachyonic around the initial values (the cubic "
+                       "potential is unbounded below), reduce lambda");
+        double mu1_eff = sqrt(std::max(0.0, mu1_eff_sq));
+        double mu2_eff = sqrt(std::max(0.0, mu2_eff_sq));
+        warn_parameter("mu1_eff", mu1_eff,
+                       mu1_eff < 0.2 / coarsest_dx / dt_multiplier,
                        "oscillations of phi1 do not appear to be resolved on "
                        "coarsest level");
-        warn_parameter("mu2_eff = sqrt(scalar_mass2^2 + lambda * phi1_0^2)",
-                       mu2_eff, mu2_eff < 0.2 / coarsest_dx / dt_multiplier,
+        warn_parameter("mu2_eff", mu2_eff,
+                       mu2_eff < 0.2 / coarsest_dx / dt_multiplier,
                        "oscillations of phi2 do not appear to be resolved on "
                        "coarsest level");
+        check_parameter("rho_integral_radius", rho_integral_radius,
+                        rho_integral_radius > 0.0, "must be > 0");
+        check_parameter("rho_integral_min_chi", rho_integral_min_chi,
+                        rho_integral_min_chi >= 0.0 &&
+                            rho_integral_min_chi < 1.0,
+                        "must be in [0, 1)");
         warn_parameter(
             "|K| * stop_time", std::abs(initial_K) * stop_time,
             std::abs(initial_K) * stop_time <= 0.3,
@@ -378,6 +404,9 @@ class SimulationParameters : public SimulationParametersBase
     Potential::params_t potential_params;
     InitialTwoFieldsData::params_t initial_params;
     double initial_K; //!< the (uniform) initial value of K
+    bool calculate_rho_integrals;
+    double rho_integral_radius;  //!< radius of the sphere around the center
+    double rho_integral_min_chi; //!< cells with chi below this are excluded
 
 #ifdef USE_TWOPUNCTURES
     double tp_offset_plus, tp_offset_minus;
