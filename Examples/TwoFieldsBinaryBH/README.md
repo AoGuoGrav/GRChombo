@@ -171,6 +171,13 @@ here.
   the Compton wavelength of phi1 out to `r ~ 120`. The comments at the top of
   the file explain the differences with their setup, the suggested set of
   runs and the changes for `mu1 = 0.5`.
+- [params_complex_check.txt](./params_complex_check.txt): a cheaper check
+  against their complex field. With `lambda = 0`, `mu1 = mu2 = 0.34`,
+  `phi2_0 = 0` and `Pi2_0 = mu phi1_0`, the two real fields form the complex
+  field `phi1 + i phi2` in their uniform initial state, whose `rho` does not
+  oscillate. Setting `phi1_0 = 5e-5` and `Pi2_0 = 0` gives the real field run
+  at the same density. The box (`L = 256`), the finest resolution and
+  `stop_time = 1100` (about 4 orbits) are reduced, and the AH finder is off.
 - [params_very_cheap.txt](./params_very_cheap.txt): a small test run. It uses
   larger masses and amplitudes, so the matter has a visible effect over its
   short `stop_time`.
