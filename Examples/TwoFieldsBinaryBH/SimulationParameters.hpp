@@ -54,6 +54,15 @@ class SimulationParameters : public SimulationParametersBase
         pp.load("Pi2_0", initial_params.Pi2_0, 0.0);
         // -1 for an expanding background (K < 0), +1 for a contracting one
         pp.load("K_sign", initial_params.K_sign, -1.0);
+        // Optional smooth random seed added to phi2, needed for the decay
+        // phi1 -> phi2 phi2 when interaction_squared_field = 2 and phi2_0 = 0
+        pp.load("phi2_noise_amplitude", initial_params.phi2_noise_amplitude,
+                0.0);
+        pp.load("phi2_noise_k_min", initial_params.phi2_noise_k_min, 0.0);
+        pp.load("phi2_noise_k_max", initial_params.phi2_noise_k_max, 0.5);
+        pp.load("phi2_noise_num_modes", initial_params.phi2_noise_num_modes,
+                64);
+        pp.load("phi2_noise_seed", initial_params.phi2_noise_seed, 12345);
 
         // Integrals of the energy densities around the binary, written to
         // data/rho_integrals.dat every coarse time step
@@ -376,6 +385,42 @@ class SimulationParameters : public SimulationParametersBase
                        mu2_eff < 0.2 / coarsest_dx / dt_multiplier,
                        "oscillations of phi2 do not appear to be resolved on "
                        "coarsest level");
+        check_parameter(
+            "phi2_noise_amplitude", initial_params.phi2_noise_amplitude,
+            initial_params.phi2_noise_amplitude >= 0.0, "must be >= 0");
+        if (initial_params.phi2_noise_amplitude > 0.0)
+        {
+            check_parameter("phi2_noise_k_max", initial_params.phi2_noise_k_max,
+                            initial_params.phi2_noise_k_max >
+                                initial_params.phi2_noise_k_min,
+                            "must be > phi2_noise_k_min");
+            check_parameter("phi2_noise_k_min", initial_params.phi2_noise_k_min,
+                            initial_params.phi2_noise_k_min >= 0.0,
+                            "must be >= 0");
+            check_parameter(
+                "phi2_noise_num_modes", initial_params.phi2_noise_num_modes,
+                initial_params.phi2_noise_num_modes > 0, "must be > 0");
+            warn_parameter("phi2_noise_k_max", initial_params.phi2_noise_k_max,
+                           initial_params.phi2_noise_k_max * coarsest_dx < 1.0,
+                           "the seed is not resolved on the coarsest level");
+        }
+        if (potential_params.interaction_squared_field == 2 &&
+            potential_params.lambda != 0.0)
+        {
+            // phi1 -> phi2 phi2 needs a seed and is only allowed for
+            // mu2 < mu1 / 2, at |k| = sqrt(mu1^2 / 4 - mu2^2)
+            warn_parameter(
+                "phi2_noise_amplitude", initial_params.phi2_noise_amplitude,
+                initial_params.phi2_0 != 0.0 || initial_params.Pi2_0 != 0.0 ||
+                    initial_params.phi2_noise_amplitude > 0.0,
+                "phi2 starts exactly zero and stays zero with "
+                "V_int = -lambda phi1 phi2^2, so the coupling has "
+                "no effect: add a seed");
+            warn_parameter("scalar_mass2", potential_params.scalar_mass2,
+                           potential_params.scalar_mass2 <
+                               0.5 * potential_params.scalar_mass1,
+                           "the decay phi1 -> phi2 phi2 needs mu2 < mu1 / 2");
+        }
         check_parameter("rho_integral_radius", rho_integral_radius,
                         rho_integral_radius > 0.0, "must be > 0");
         check_parameter("rho_integral_min_chi", rho_integral_min_chi,

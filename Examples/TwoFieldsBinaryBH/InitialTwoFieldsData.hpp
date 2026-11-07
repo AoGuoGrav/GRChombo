@@ -7,12 +7,15 @@
 #define INITIALTWOFIELDSDATA_HPP_
 
 #include "Cell.hpp"
+#include "Coordinates.hpp"
 #include "Potential.hpp"
 #include "Tensor.hpp"
 #include "TwoScalarFields.hpp"
 #include "UserVariables.hpp" //This files needs NUM_VARS - total no. components
 #include "VarsTools.hpp"
 #include "simd.hpp"
+#include <random>
+#include <vector>
 
 //! Class which sets uniform initial values of the two scalar fields and the
 //! value of K required by the Hamiltonian constraint
@@ -39,6 +42,19 @@
     GRChombo's convention K < 0 for expansion (see e.g.
     Examples/ScalarFieldCosmo/InitialK.hpp). Note that Examples/ScalarFieldBH
     uses K > 0.
+
+    Optionally a small random seed is added to phi2 (phi2_noise_amplitude >
+    0). With V_int = -lambda phi1 phi2^2 and phi2 = 0 the field phi2 stays
+    exactly zero, so the decay phi1 -> phi2 phi2 (parametric resonance of
+    phi2 driven by the oscillation of phi1) needs a seed to start from. The
+    seed is a sum of num_modes waves
+      delta phi2 = A (2 / sqrt(N)) sum_n cos(kx_n x + ky_n y + theta_n)
+                   cos(kz_n z)
+    with random directions, |k| uniform in [k_min, k_max] and random phases
+    theta_n, so that its rms value is A, it is a smooth function of position
+    (the same on every level and MPI rank, given the seed) and it is even in
+    z (consistent with the reflective boundary at z = 0). It is not included
+    in rho and K, which is fine as long as mu2^2 A^2 << rho.
 */
 class InitialTwoFieldsData
 {
@@ -51,6 +67,11 @@ class InitialTwoFieldsData
         double Pi1_0;  //!< Initial uniform value of Pi1
         double Pi2_0;  //!< Initial uniform value of Pi2
         double K_sign; //!< Sign of K: -1 for expansion, +1 for contraction
+        double phi2_noise_amplitude; //!< rms of the seed added to phi2
+        double phi2_noise_k_min;     //!< smallest wavenumber of the seed
+        double phi2_noise_k_max;     //!< largest wavenumber of the seed
+        int phi2_noise_num_modes;    //!< number of waves in the seed
+        int phi2_noise_seed;         //!< seed of the random number generator
     };
 
     template <class data_t>
@@ -58,9 +79,31 @@ class InitialTwoFieldsData
 
     //! The constructor
     InitialTwoFieldsData(const params_t a_params, const Potential a_potential,
-                         const double a_G_Newton = 1.0)
-        : m_params(a_params), m_potential(a_potential), m_G_Newton(a_G_Newton)
+                         const double a_G_Newton, const double a_dx,
+                         const std::array<double, CH_SPACEDIM> a_center)
+        : m_params(a_params), m_potential(a_potential), m_G_Newton(a_G_Newton),
+          m_dx(a_dx), m_center(a_center)
     {
+        if (m_params.phi2_noise_amplitude > 0.0)
+        {
+            // the same sequence on every rank, since the seed is the same
+            std::mt19937 generator(m_params.phi2_noise_seed);
+            std::uniform_real_distribution<double> uniform(0.0, 1.0);
+            for (int n = 0; n < m_params.phi2_noise_num_modes; ++n)
+            {
+                const double k =
+                    m_params.phi2_noise_k_min +
+                    (m_params.phi2_noise_k_max - m_params.phi2_noise_k_min) *
+                        uniform(generator);
+                const double cos_theta = 2.0 * uniform(generator) - 1.0;
+                const double sin_theta = sqrt(1.0 - cos_theta * cos_theta);
+                const double azimuth = 2.0 * M_PI * uniform(generator);
+                m_kx.push_back(k * sin_theta * cos(azimuth));
+                m_ky.push_back(k * sin_theta * sin(azimuth));
+                m_kz.push_back(k * cos_theta);
+                m_phase.push_back(2.0 * M_PI * uniform(generator));
+            }
+        }
     }
 
     //! The (uniform) energy density of the initial field configuration
@@ -90,6 +133,22 @@ class InitialTwoFieldsData
         set_matter_vars(vars, m_params);
         data_t K = compute_K(m_params, m_potential, m_G_Newton);
 
+        // add the seed of phi2
+        const int num_modes = m_kx.size();
+        if (num_modes > 0)
+        {
+            Coordinates<data_t> coords(current_cell, m_dx, m_center);
+            data_t noise = 0.;
+            for (int n = 0; n < num_modes; ++n)
+            {
+                noise +=
+                    cos(m_kx[n] * coords.x + m_ky[n] * coords.y + m_phase[n]) *
+                    cos(m_kz[n] * coords.z);
+            }
+            vars.phi2 += m_params.phi2_noise_amplitude * 2.0 /
+                         sqrt(static_cast<double>(num_modes)) * noise;
+        }
+
         current_cell.store_vars(vars);
         current_cell.store_vars(K, c_K);
     }
@@ -98,6 +157,10 @@ class InitialTwoFieldsData
     const params_t m_params; //!< The matter initial condition params
     const Potential m_potential;
     const double m_G_Newton;
+    const double m_dx;
+    const std::array<double, CH_SPACEDIM> m_center;
+    //! wavevectors and phases of the waves in the seed of phi2
+    std::vector<double> m_kx, m_ky, m_kz, m_phase;
 
     template <class data_t>
     static void set_matter_vars(MatterVars<data_t> &vars,

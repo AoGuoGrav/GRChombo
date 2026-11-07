@@ -69,7 +69,7 @@ void TwoFieldsBinaryBHLevel::initialData()
     // the vacuum data above)
     Potential potential(m_p.potential_params);
     InitialTwoFieldsData initial_fields(m_p.initial_params, potential,
-                                        m_p.G_Newton);
+                                        m_p.G_Newton, m_dx, m_p.center);
     BoxLoops::loop(initial_fields, m_state_new, m_state_new,
                    INCLUDE_GHOST_CELLS);
 }

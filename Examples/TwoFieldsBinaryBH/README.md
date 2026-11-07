@@ -128,6 +128,34 @@ convention is `K < 0` for expansion; see
 [Examples/ScalarFieldCosmo/InitialK.hpp](../ScalarFieldCosmo/InitialK.hpp).
 Note that [Examples/ScalarFieldBH](../ScalarFieldBH) uses `K > 0`.
 
+### Seed of phi2
+
+With `interaction_squared_field = 2` (`V_int = -lambda phi1 phi2^2`) and
+`phi2_0 = Pi2_0 = 0`, both sources vanish and phi2 stays exactly zero, so the
+coupling does nothing. The decay `phi1 -> phi2 phi2` (parametric resonance of
+phi2 driven by the oscillation of phi1, allowed for `mu2 < mu1 / 2`) needs a
+seed, which is set with
+
+```
+phi2_noise_amplitude = 1.0e-4  # rms of the seed (0, the default, turns it off)
+phi2_noise_k_min = 0.02        # range of |k| of the waves in the seed
+phi2_noise_k_max = 0.12
+phi2_noise_num_modes = 128     # number of waves
+phi2_noise_seed = 12345        # seed of the random number generator
+```
+
+The seed is a sum of waves `cos(kx x + ky y + theta) cos(kz z)` with random
+directions, `|k|` and phases. It is a smooth function of position, so it is
+the same on every level and MPI rank, and it is even in `z` as required by
+the reflective boundary. It is not included in `rho` and `K`, which requires
+`mu2^2 A^2 << rho`. The modes that grow have `|k| = sqrt(mu1^2 / 4 - mu2^2)`,
+so the range of `|k|` should contain this value.
+
+In a test without BHs (`G_Newton = 0`, `mu1 = 1`, `mu2 = 0.4`,
+`lambda phi1_0 = 0.05`), `int rho2 dV` grew as `exp(0.094 t)`, against
+`2 lambda phi1_0 / mu1 = 0.1` for exact resonance. After about 9 e-folds it
+started to drain phi1.
+
 ## Boundary conditions
 
 The uniform fields source an FRW-like background. Far from the BHs, `chi`,
@@ -178,6 +206,13 @@ here.
   oscillate. Setting `phi1_0 = 5e-5` and `Pi2_0 = 0` gives the real field run
   at the same density. The box (`L = 256`), the finest resolution and
   `stop_time = 1100` (about 4 orbits) are reduced, and the AH finder is off.
+- [params_zpz_decay.txt](./params_zpz_decay.txt): the cubic coupling of
+  `params_zpz_channel.txt` with the square on the other field
+  (`interaction_squared_field = 2`), so that the dark matter field phi1 can
+  decay into two phi2 (`mu2 = 0.16 < mu1 / 2`). Unlike `psi psi -> phi`, this
+  also happens in the uniform background, so each run needs a control
+  without the BHs. The comments at the top of the file give the growth
+  rates, the tachyon limit and the suggested runs.
 - [params_very_cheap.txt](./params_very_cheap.txt): a small test run. It uses
   larger masses and amplitudes, so the matter has a visible effect over its
   short `stop_time`.
