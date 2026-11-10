@@ -206,6 +206,27 @@ here.
   oscillate. Setting `phi1_0 = 5e-5` and `Pi2_0 = 0` gives the real field run
   at the same density. The box (`L = 256`), the finest resolution and
   `stop_time = 1100` (about 4 orbits) are reduced, and the AH finder is off.
+  With `extrapolation_order = 1` this run blew up on the coarsest level near
+  the outer boundary.
+- [params_complex_check_order0.txt](./params_complex_check_order0.txt): the
+  same with `extrapolation_order = 0`, which can also restart the crashed run
+  from a checkpoint.
+- [params_complex_check_nobh.txt](./params_complex_check_nobh.txt): the same
+  without the BHs, to test the boundary conditions on the expanding
+  background alone and as the background reference of the BH run.
+- [params_bamber_fig1.txt](./params_bamber_fig1.txt): reproduces Fig. 1 of
+  Bamber et al. (complex field, `mu = 0.34`, `L = 512`, `G_Newton = 0` so
+  that the field is a test field, `phi0 = 1`, snapshots at t = 0, 540, 1080
+  and 1620). Theirs uses a fixed orbit, here the binary inspirals.
+- [params_zpz_channel.txt](./params_zpz_channel.txt): the effect of the
+  coupling of [arXiv:2509.10892](https://arxiv.org/abs/2509.10892) on the
+  accumulation of one field around the binary. Everything but the fields is
+  `params_bamber_fig1.txt`; `psi = phi1` is a real field with `mu1 = 0.34`
+  and the same `rho0`, and `phi = phi2` starts empty. With `G_Newton = 0`
+  only `g = lambda psi0` matters. Runs: `lambda = 0` (single field
+  reference), `q = 1.5` (the `psi psi -> phi` channel is open) and `q = 2.5`
+  (closed). Their paper studies the superradiance of a single Kerr BH
+  perturbatively, which cannot be simulated directly.
 - [params_zpz_decay.txt](./params_zpz_decay.txt): the cubic coupling of
   `params_zpz_channel.txt` with the square on the other field
   (`interaction_squared_field = 2`), so that the dark matter field phi1 can
@@ -213,6 +234,11 @@ here.
   also happens in the uniform background, so each run needs a control
   without the BHs. The comments at the top of the file give the growth
   rates, the tachyon limit and the suggested runs.
+- [params_zpz_decay_lambda0.txt](./params_zpz_decay_lambda0.txt): the same
+  with `lambda = 0`, the reference for the rho1 integral inside `r < 40`.
+- [params_zpz_decay_nobh.txt](./params_zpz_decay_nobh.txt): the same
+  without the BHs (masses `1e-12`, no puncture tracking), the decay of the
+  uniform background alone.
 - [params_very_cheap.txt](./params_very_cheap.txt): a small test run. It uses
   larger masses and amplitudes, so the matter has a visible effect over its
   short `stop_time`.

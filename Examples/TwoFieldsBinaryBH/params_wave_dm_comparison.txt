@@ -133,7 +133,10 @@ max_level = 7 # There are (max_level+1) grids, so min is zero
 # Need one for each level except the top one, ie max_level items
 # Generally you do not need to regrid frequently on every level
 # Level Regridding: 0   1   2   3   4   5   6
-regrid_interval =   0   0   0   64  64  64  64
+# Level 3 (dx = 0.25) must follow the BHs: with 0 for level 2 it stays at
+# its initial shape (|x| < 8, |y| < 12) and the BHs leave the fine levels
+# after ~70 M, which happened in the MN5 runs of 2026-11-10
+regrid_interval =   0   0   64  64  64  64  64
 regrid_threshold = 0.05
 
 # Max and min box sizes
